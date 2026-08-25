@@ -15,6 +15,28 @@
 *{box-sizing:border-box;margin:0;padding:0;}
 body{background:var(--bg);color:var(--text);font-family:var(--font-mono);min-height:100vh;display:flex;flex-direction:column;align-items:center;}
 
+/* AUTOCOMPLETE */
+.autocomplete-wrap { position: relative; }
+.ac-dropdown {
+  position: absolute; top: 100%; left: 0; right: 0; z-index: 200;
+  background: var(--surface2); border: 1px solid var(--accent);
+  border-radius: 8px; max-height: 240px; overflow-y: auto;
+  display: none; flex-direction: column; margin-top: 4px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.55);
+}
+.ac-dropdown.open { display: flex; }
+.ac-group {
+  font-size: 9px; letter-spacing: 1.5px; text-transform: uppercase;
+  color: var(--text3); padding: 9px 12px 4px;
+  position: sticky; top: 0; background: var(--surface2);
+}
+.ac-item {
+  padding: 10px 14px; font-size: 13px; color: var(--text);
+  cursor: pointer; transition: background 0.15s;
+}
+.ac-item:hover, .ac-item.selected { background: var(--surface); color: var(--accent); }
+.ac-empty { padding: 12px 14px; font-size: 12px; color: var(--text3); }
+
 /* PIN LOCK */
 #pin-screen{position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:24px;}
 .pin-logo{font-family:var(--font-display);font-size:32px;font-weight:300;color:var(--text);}
@@ -692,7 +714,9 @@ function acSeleccionarSimple(val) {
   clearTimeout(acSimpleBlurTimer);
   document.getElementById('simple-search').value = val;
   document.getElementById('simple-concepto').value = val;
-  document.getElementById('ac-dropdown-simple').classList.remove('open');
+  const dd = document.getElementById('ac-dropdown-simple');
+  dd.classList.remove('open');
+  dd.innerHTML = '';
   document.getElementById('simple-monto').focus();
 }
 
@@ -1162,10 +1186,15 @@ function acOcultar() {
 
 function acSeleccionar(val) {
   clearTimeout(acBlurTimer);
-  document.getElementById('gasto-ingreso-search').value = val;
+  const inp = document.getElementById('gasto-ingreso-search');
+  inp.value = val;
   document.getElementById('gasto-ingreso').value = val;
-  document.getElementById('ac-dropdown').classList.remove('open');
+  const dd = document.getElementById('ac-dropdown');
+  dd.classList.remove('open');
+  dd.innerHTML = '';
+  inp.blur();
   autocompletar();
+  toggleTDC();
 }
 
 function acKeyDown(e) {
@@ -2221,6 +2250,8 @@ function armarConceptosPorCat(map) {
 // Convierte las filas de LISTAS en el objeto LISTAS, filtrando INACTIVO
 function armarListasDesdeFilas(filas) {
   const out = { medios: [], distribucion: [], responsables: [], clasificacion: [], tdc: [] };
+  let marcoAlgunaTdc = false;
+
   for (let i = 1; i < filas.length; i++) {
     const f = filas[i] || [];
     const medio  = (f[0] || '').trim();
@@ -2231,11 +2262,23 @@ function armarListasDesdeFilas(filas) {
     const esTdc  = (f[5] || '').trim().toUpperCase();
     if (medio && estado !== 'INACTIVO') {
       out.medios.push(medio);
-      if (esTdc === 'SI' || esTdc === 'SÍ' || esTdc === 'TDC') out.tdc.push(medio);
+      if (['SI','SÍ','TDC','X','1','TRUE','VERDADERO'].includes(esTdc)) {
+        out.tdc.push(medio);
+        marcoAlgunaTdc = true;
+      }
     }
     if (distri) out.distribucion.push(distri);
     if (resp) out.responsables.push(resp);
     if (clasif) out.clasificacion.push(clasif);
+  }
+
+  // Si la columna ES TDC está vacía, deducir por nombre del medio de pago
+  if (!marcoAlgunaTdc) {
+    const pistas = ['VISA','MASTER','AMEX','CREDITO','CRÉDITO','TARJETA','TDC'];
+    out.tdc = out.medios.filter(m => {
+      const M = m.toUpperCase();
+      return pistas.some(p => M.includes(p));
+    });
   }
   return out;
 }
