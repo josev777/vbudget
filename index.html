@@ -4,6 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>VBudget</title>
+<meta name="theme-color" content="#0f0f0f">
+<meta name="description" content="Sistema de gestion financiera familiar">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="VBudget">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Fraunces:ital,wght@0,300;0,600;1,300&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -14,6 +22,30 @@
 }
 *{box-sizing:border-box;margin:0;padding:0;}
 body{background:var(--bg);color:var(--text);font-family:var(--font-mono);min-height:100vh;display:flex;flex-direction:column;align-items:center;}
+
+
+/* BANNER DE ESTADO */
+#banner-estado {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 9998;
+  display: flex; flex-direction: column;
+}
+.vb-banner {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  padding: 9px 14px; font-family: var(--font-mono); font-size: 11px;
+  letter-spacing: 0.5px; text-align: center;
+  animation: bajarBanner 0.3s ease;
+}
+@keyframes bajarBanner { from { transform: translateY(-100%); } to { transform: translateY(0); } }
+.vb-banner.offline { background: #3a2a12; color: #f0a03c; border-bottom: 1px solid #5c4420; }
+.vb-banner.pendientes { background: #12283a; color: var(--accent2); border-bottom: 1px solid #204a5c; }
+.vb-banner.sync { background: #1a3320; color: var(--success); border-bottom: 1px solid #2a5c38; }
+.vb-banner.aviso { background: #3a1212; color: var(--danger); border-bottom: 1px solid #5c2020; }
+.vb-banner button {
+  background: rgba(255,255,255,0.1); border: 1px solid currentColor; color: inherit;
+  border-radius: 5px; font-family: var(--font-mono); font-size: 10px;
+  padding: 4px 10px; cursor: pointer; letter-spacing: 0.5px; white-space: nowrap;
+}
+body.con-banner header, body.con-banner #app-simple > div:first-child { padding-top: 46px; }
 
 /* AUTOCOMPLETE */
 .autocomplete-wrap { position: relative; }
@@ -157,6 +189,9 @@ textarea.json-input{background:var(--bg);border:1px solid var(--border);border-r
 </style>
 </head>
 <body>
+
+<!-- BANNER DE ESTADO -->
+<div id="banner-estado"></div>
 
 <!-- PIN LOCK -->
 <div id="pin-screen">
@@ -314,7 +349,7 @@ textarea.json-input{background:var(--bg);border:1px solid var(--border);border-r
 
 <header>
   <div class="logo">V<span>Budget</span></div>
-  <div class="subtitle">Sistema de control · v4.0</div>
+  <div class="subtitle">Sistema de control · v4.1</div>
 </header>
 
 <div class="tabs">
@@ -623,6 +658,20 @@ textarea.json-input{background:var(--bg);border:1px solid var(--border);border-r
   </div>
 
   <div class="card">
+    <div class="card-title">Movimientos pendientes</div>
+    <div style="font-size:11px;color:var(--text2);line-height:1.6;">
+      Si cargás sin señal, los movimientos quedan guardados en el dispositivo y se envían solos al reconectar.
+    </div>
+    <div class="conn-status">
+      <div class="conn-dot" id="cola-dot"></div>
+      <span id="cola-text">Sin pendientes</span>
+    </div>
+    <button class="btn-secondary" onclick="sincronizarCola(true)">Enviar pendientes ahora</button>
+    <button class="btn-secondary" onclick="verPendientes()">Ver detalle</button>
+    <div id="cola-detalle" style="display:none;font-size:11px;color:var(--text2);line-height:1.7;padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;"></div>
+  </div>
+
+  <div class="card">
     <div class="card-title">Estado de conexión</div>
     <div class="conn-status">
       <div class="conn-dot" id="conn-dot"></div>
@@ -641,7 +690,7 @@ textarea.json-input{background:var(--bg);border:1px solid var(--border);border-r
   <div class="card">
     <div class="card-title">Acerca de</div>
     <div style="font-size:11px;color:var(--text2);line-height:1.8;">
-      VBudget v4.0<br>
+      VBudget v4.1 · PWA<br>
       Conceptos y listas se leen del Sheet — la app no guarda datos propios.<br>
       Registros → Google Sheets → Excel vía Power Query.
     </div>
@@ -673,6 +722,9 @@ function initSimple() {
   aplicarNombresSesion();
   renderSimpleRecientes();
   cargarTablas();
+  actualizarBanner();
+  setColaStatus();
+  sincronizarCola(false);
 }
 
 // Autocomplete simple (same data, simpler UX)
@@ -754,7 +806,7 @@ async function enviarSimple() {
   mostrarStatusSimple('', '');
 
   try {
-    const token = await getToken();
+    const token = navigator.onLine ? await getToken() : null;
     const d = MAP[concepto] || {};
     const hoy = new Date();
     const mm = String(hoy.getMonth()+1).padStart(2,'0');
@@ -770,12 +822,19 @@ async function enviarSimple() {
     ];
 
     console.log('VBudget: Sending fila to sheet:', appConfig.sheetName, fila.slice(0,5));
-    await appendRow(token, fila);
+    const previoS = yaSeEnvio(fila);
+    if (previoS && !avisarDuplicado(fila, previoS)) {
+      btn.disabled = false; btn.textContent = '✓  Registrar';
+      return;
+    }
+
+    const resS = await enviarFila(token, fila, 'simple');
 
     // Show success
     document.querySelector('#app-simple .card, #app-simple > div > div:nth-child(2)');
-    document.getElementById('simple-success-msg').textContent =
-      `${concepto} · $${monto.toLocaleString('es-AR')}`;
+    document.getElementById('simple-success-msg').textContent = resS.encolada
+      ? `${concepto} · $${monto.toLocaleString('es-AR')} — se envía al volver la señal`
+      : `${concepto} · $${monto.toLocaleString('es-AR')}`;
     document.getElementById('simple-success').style.display = 'flex';
     document.querySelector('#app-simple .card') && (document.querySelector('#app-simple .card').style.display = 'none');
 
@@ -978,9 +1037,15 @@ async function enviarLote() {
   mostrarStatusLote(`Enviando ${filas.length} registros...`,'loading');
 
   try {
-    const token = await getToken();
-    for (const fila of filas) await appendRow(token, fila);
-    mostrarStatusLote(`✓ ${filas.length} registros enviados.`,'success');
+    const token = navigator.onLine ? await getToken() : null;
+    let encoladas = 0;
+    for (const fila of filas) {
+      const r = await enviarFila(token, fila, 'lote');
+      if (r.encolada) encoladas++;
+    }
+    mostrarStatusLote(encoladas
+      ? `${filas.length - encoladas} enviados · ${encoladas} guardados sin conexión`
+      : `✓ ${filas.length} registros enviados.`, encoladas ? 'loading' : 'success');
     filas.forEach((_,i) => {
       const chk = document.getElementById('lote-chk-'+i);
       if (chk) chk.checked = false;
@@ -1521,6 +1586,9 @@ function initApp() {
   aplicarNombresSesion();
   renderRecurrentes();
   cargarTablas();
+  actualizarBanner();
+  setColaStatus();
+  sincronizarCola(false);
 }
 
 // Aplica los nombres de usuario configurables a la interfaz
@@ -1664,7 +1732,7 @@ async function enviarGasto() {
   mostrarStatus('Conectando...','loading');
 
   try {
-    const token = await getToken();
+    const token = navigator.onLine ? await getToken() : null;
     const montoFinal = tipoActual==='INGRESO' ? -Math.abs(monto) : Math.abs(monto);
     const obsVal     = normalizar(document.getElementById('observaciones').value);
     const provVal    = normalizar((document.getElementById('proveedor') || {}).value || '');
@@ -1959,9 +2027,15 @@ async function enviarTodosRecurrentes() {
 
   mostrarStatusRec(`Enviando ${filas.length} registros...`,'loading');
   try {
-    const token = await getToken();
-    for (const fila of filas) await appendRow(token, fila);
-    mostrarStatusRec(`✓ ${filas.length} gastos recurrentes registrados.`,'success');
+    const token = navigator.onLine ? await getToken() : null;
+    let encoladasR = 0;
+    for (const fila of filas) {
+      const r = await enviarFila(token, fila, 'presupuesto');
+      if (r.encolada) encoladasR++;
+    }
+    mostrarStatusRec(encoladasR
+      ? `${filas.length - encoladasR} enviados · ${encoladasR} guardados sin conexión`
+      : `✓ ${filas.length} conceptos del presupuesto registrados.`, encoladasR ? 'loading' : 'success');
     filas.forEach((_,i)=>{ RECURRENTES.forEach((__,j)=>{ if(document.getElementById('chk-'+j)) {} }); });
   } catch(e) {
     mostrarStatusRec('Error: '+e.message,'error');
@@ -2146,6 +2220,40 @@ function guardarUsuarios() {
   aplicarNombresSesion();
   const el = document.getElementById('users-msg');
   if (el) { el.className = 'status success'; el.textContent = '✓ Usuarios guardados.'; setTimeout(()=>{el.style.display='none';},3000); }
+}
+
+
+function setColaStatus() {
+  const dot = document.getElementById('cola-dot');
+  const txt = document.getElementById('cola-text');
+  if (!dot || !txt) return;
+  const n = leerCola().length;
+  if (n) {
+    dot.className = 'conn-dot err';
+    txt.textContent = n + ' movimiento' + (n > 1 ? 's' : '') + ' sin enviar';
+  } else {
+    dot.className = 'conn-dot ok';
+    txt.textContent = 'Sin pendientes · todo sincronizado';
+  }
+}
+
+function verPendientes() {
+  const el = document.getElementById('cola-detalle');
+  if (!el) return;
+  const cola = leerCola();
+  if (!cola.length) {
+    el.innerHTML = 'No hay movimientos pendientes.';
+  } else {
+    el.innerHTML = cola.map(item => {
+      const f = item.fila;
+      const cuando = new Date(item.ts).toLocaleString('es-AR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
+      return '<div style="padding:4px 0;border-bottom:1px solid var(--border);">'
+        + '<span style="color:var(--text)">' + f[4] + '</span> · $'
+        + Math.abs(f[3]).toLocaleString('es-AR')
+        + ' · ' + f[0] + ' <span style="color:var(--text3)">(' + cuando + ')</span></div>';
+    }).join('');
+  }
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
 }
 
 function setTablasStatus() {
@@ -2392,6 +2500,212 @@ function mostrarAvisoTablas(msg, esError) {
   el.style.borderColor = esError ? 'rgba(240,96,96,0.3)' : 'rgba(200,240,96,0.25)';
   if (!esError) setTimeout(() => { el.style.display = 'none'; }, 4000);
 }
+
+
+
+// ══════════════════════════════════════════════
+// SERVICE WORKER / PWA
+// ══════════════════════════════════════════════
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').then(reg => {
+      // Detectar version nueva disponible
+      reg.addEventListener('updatefound', () => {
+        const nuevo = reg.installing;
+        if (!nuevo) return;
+        nuevo.addEventListener('statechange', () => {
+          if (nuevo.state === 'installed' && navigator.serviceWorker.controller) {
+            bannerFijo = true;
+            mostrarBanner('sync', 'Hay una versión nueva de VBudget',
+              { texto: 'Actualizar', accion: 'aplicarActualizacion()' });
+          }
+        });
+      });
+    }).catch(() => {});
+
+    // Cuando el SW nuevo toma control, recargar una sola vez
+    let recargando = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (recargando) return;
+      recargando = true;
+      window.location.reload();
+    });
+  });
+}
+
+function aplicarActualizacion() {
+  bannerFijo = null;
+  if (navigator.serviceWorker.controller) {
+    navigator.serviceWorker.getRegistration().then(reg => {
+      if (reg && reg.waiting) reg.waiting.postMessage('actualizar');
+      else window.location.reload();
+    });
+  } else {
+    window.location.reload();
+  }
+}
+
+// ══════════════════════════════════════════════
+// COLA OFFLINE + DETECCION DE DUPLICADOS
+// ══════════════════════════════════════════════
+const COLA_KEY  = 'vb_cola_pendientes';
+const HUELLA_KEY = 'vb_huellas_enviadas';
+
+function leerCola() {
+  try { return JSON.parse(localStorage.getItem(COLA_KEY) || '[]'); }
+  catch(e) { return []; }
+}
+
+function guardarCola(cola) {
+  try { localStorage.setItem(COLA_KEY, JSON.stringify(cola)); } catch(e) {}
+  actualizarBanner();
+  setColaStatus();
+}
+
+// Huella = periodo + concepto + monto. Sirve para detectar cargas repetidas.
+function huellaDe(fila) {
+  return [fila[0], fila[4], fila[3]].join('|').toUpperCase();
+}
+
+function leerHuellas() {
+  try { return JSON.parse(localStorage.getItem(HUELLA_KEY) || '{}'); }
+  catch(e) { return {}; }
+}
+
+function registrarHuella(fila) {
+  const h = leerHuellas();
+  h[huellaDe(fila)] = Date.now();
+  // conservar solo las ultimas 300
+  const claves = Object.keys(h);
+  if (claves.length > 300) {
+    claves.sort((a,b) => h[a] - h[b]).slice(0, claves.length - 300).forEach(k => delete h[k]);
+  }
+  try { localStorage.setItem(HUELLA_KEY, JSON.stringify(h)); } catch(e) {}
+}
+
+// Devuelve la fecha del envio anterior si esta fila ya se mando, o null
+function yaSeEnvio(fila) {
+  const h = leerHuellas();
+  const ts = h[huellaDe(fila)];
+  if (!ts) return null;
+  // solo alertar si fue en los ultimos 30 dias
+  if (Date.now() - ts > 30*24*60*60*1000) return null;
+  return new Date(ts);
+}
+
+function encolar(fila, origen) {
+  const cola = leerCola();
+  cola.push({ fila, origen: origen || 'individual', ts: Date.now() });
+  guardarCola(cola);
+}
+
+// Envia una fila: si no hay conexion o falla, la encola
+async function enviarFila(token, fila, origen) {
+  if (!navigator.onLine) { encolar(fila, origen); return { encolada: true }; }
+  try {
+    await appendRow(token, fila);
+    registrarHuella(fila);
+    return { encolada: false };
+  } catch(e) {
+    const esRed = /fail|network|fetch|conexi|timeout|load/i.test(e.message || '');
+    if (esRed) { encolar(fila, origen); return { encolada: true }; }
+    throw e;
+  }
+}
+
+// Intenta vaciar la cola
+let sincronizando = false;
+async function sincronizarCola(manual) {
+  if (sincronizando) return;
+  const cola = leerCola();
+  if (!cola.length) { if (manual) mostrarBanner('sync', 'No hay movimientos pendientes.'); return; }
+  if (!navigator.onLine) { if (manual) mostrarBanner('offline', 'Seguís sin conexión. Los movimientos están guardados.'); return; }
+  if (!appConfig.sheetId || !appConfig.jsonCreds) return;
+
+  sincronizando = true;
+  mostrarBanner('sync', 'Enviando ' + cola.length + ' movimiento' + (cola.length > 1 ? 's' : '') + ' pendiente' + (cola.length > 1 ? 's' : '') + '...');
+
+  let enviados = 0;
+  const quedan = [];
+  try {
+    const token = await getToken();
+    for (const item of cola) {
+      try {
+        await appendRow(token, item.fila);
+        registrarHuella(item.fila);
+        enviados++;
+      } catch(e) {
+        quedan.push(item);
+      }
+    }
+  } catch(e) {
+    sincronizando = false;
+    guardarCola(cola);
+    mostrarBanner('offline', 'No se pudo conectar. Los movimientos siguen guardados.');
+    return;
+  }
+
+  sincronizando = false;
+  guardarCola(quedan);
+
+  if (enviados && !quedan.length) {
+    mostrarBanner('sync', '✓ ' + enviados + ' movimiento' + (enviados > 1 ? 's' : '') + ' sincronizado' + (enviados > 1 ? 's' : '') + ' con el Sheet.');
+    setTimeout(actualizarBanner, 4000);
+  } else if (quedan.length) {
+    mostrarBanner('pendientes', enviados + ' enviados · ' + quedan.length + ' siguen pendientes');
+  }
+}
+
+// ── BANNER ──
+let bannerFijo = null;
+
+function mostrarBanner(tipo, texto, boton) {
+  const cont = document.getElementById('banner-estado');
+  if (!cont) return;
+  const btn = boton
+    ? '<button onclick="' + boton.accion + '">' + boton.texto + '</button>'
+    : '';
+  cont.innerHTML = '<div class="vb-banner ' + tipo + '"><span>' + texto + '</span>' + btn + '</div>';
+  document.body.classList.add('con-banner');
+}
+
+function ocultarBanner() {
+  const cont = document.getElementById('banner-estado');
+  if (cont) cont.innerHTML = '';
+  document.body.classList.remove('con-banner');
+}
+
+// Decide que mostrar segun el estado actual
+function actualizarBanner() {
+  if (bannerFijo) return;
+  const pendientes = leerCola().length;
+  if (!navigator.onLine) {
+    mostrarBanner('offline', pendientes
+      ? 'Sin conexión · ' + pendientes + ' guardado' + (pendientes > 1 ? 's' : '') + ' para enviar'
+      : 'Sin conexión · los movimientos se guardan y se envían solos');
+    return;
+  }
+  if (pendientes) {
+    mostrarBanner('pendientes', pendientes + ' movimiento' + (pendientes > 1 ? 's' : '') + ' sin enviar',
+      { texto: 'Enviar ahora', accion: 'sincronizarCola(true)' });
+    return;
+  }
+  ocultarBanner();
+}
+
+// ── AVISO DE POSIBLE DUPLICADO ──
+function avisarDuplicado(fila, fechaPrevia) {
+  const cuando = fechaPrevia.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  return confirm(
+    'Ojo: ya cargaste "' + fila[4] + '" por $' + Math.abs(fila[3]).toLocaleString('es-AR') +
+    ' en el período ' + fila[0] + '.\n\nSe registró el ' + cuando + '.\n\n' +
+    '¿Lo cargás igual? (Aceptar registra un movimiento nuevo, no pisa el anterior)'
+  );
+}
+
+// ── EVENTOS DE CONEXION ──
+window.addEventListener('online',  () => { actualizarBanner(); sincronizarCola(false); });
+window.addEventListener('offline', () => actualizarBanner());
 
 // ══════════════════════════════════════════════
 // GOOGLE SHEETS API
