@@ -349,7 +349,7 @@ textarea.json-input{background:var(--bg);border:1px solid var(--border);border-r
 
 <header>
   <div class="logo">V<span>Budget</span></div>
-  <div class="subtitle">Sistema de control · v4.1</div>
+  <div class="subtitle">Sistema de control · v4.2</div>
 </header>
 
 <div class="tabs">
@@ -690,7 +690,7 @@ textarea.json-input{background:var(--bg);border:1px solid var(--border);border-r
   <div class="card">
     <div class="card-title">Acerca de</div>
     <div style="font-size:11px;color:var(--text2);line-height:1.8;">
-      VBudget v4.1 · PWA<br>
+      VBudget v4.2 · PWA<br>
       Conceptos y listas se leen del Sheet — la app no guarda datos propios.<br>
       Registros → Google Sheets → Excel vía Power Query.
     </div>
@@ -813,7 +813,7 @@ async function enviarSimple() {
     const anioMes = `${hoy.getFullYear()}.${mm}`;
 
     const fila = [
-      anioMes, fecha, monto, monto,
+      anioMes, fecha, '', monto,   // solo real
       concepto, '', d.orden||'PRESUPUESTO',
       d.cat||'', d.tipo||'EGRESOS', d.clasif||'',
       usuarioActual(), '', d.mp||'', '', 'ACTIVO',
@@ -992,11 +992,13 @@ function filtrarLote() {
 }
 
 async function enviarLote() {
-  const periodo = document.getElementById('lote-periodo').value;
+  let periodo = document.getElementById('lote-periodo').value.trim();
   const fecha = document.getElementById('lote-fecha').value;
   if (!periodo) return mostrarStatusLote('Completá el período.','error');
   const periodoValido = /^(\d{4}\.\d{2}|TEST\.\d{2})$/i.test(periodo);
   if (!periodoValido) return mostrarStatusLote('Período inválido. Usá AAAA.MM o TEST.XX','error');
+  periodo = periodo.toUpperCase();
+  document.getElementById('lote-periodo').value = periodo;
   if (!appConfig.sheetId) return mostrarStatusLote('Configurá la conexión primero.','error');
 
   const conceptos = window._loteConceptos || [];
@@ -1016,7 +1018,7 @@ async function enviarLote() {
     const monto = Math.round((montoVal||0)*100)/100;
     if (!monto||monto<=0) return;
     const mp = document.getElementById('lote-mp-'+i)?.value||d.mp||'';
-    const tdc = document.getElementById('lote-tdc-'+i)?.value||'';
+    const tdc = ((document.getElementById('lote-tdc-'+i)||{}).value||'').trim().toUpperCase();
     const prov = normalizar((document.getElementById('lote-prov-'+i) || {}).value || '');
     const resp = document.getElementById('lote-resp-'+i)?.value||d.resp||'';
     const estadoLote = document.getElementById('lote-estado-'+i)?.value||'ACTIVO';
@@ -1025,7 +1027,7 @@ async function enviarLote() {
     const esFijoLote = listaFijosLote.includes(nombre) ? 'SÍ' : '';
     filas.push([
       periodo, fecha||new Date().toISOString().split('T')[0],
-      monto, monto, nombre, 'Carga por lote',
+      '', monto, nombre, 'Carga por lote',   // solo real
       d.orden||'PRESUPUESTO', d.cat||'', d.tipo||'EGRESOS',
       d.clasif||'', resp, '', mp, tdc, estadoLote,
       '', prov, '', notaLote, '', esFijoLote, '',
@@ -1719,12 +1721,14 @@ async function enviarGasto() {
   if (montoExprEl) evaluarMonto('monto-expr','monto-preview');
   const monto = parseFloat(document.getElementById('monto').value);
   const concepto = document.getElementById('gasto-ingreso').value;
-  const anioMes = document.getElementById('anio-mes').value;
+  let anioMes = document.getElementById('anio-mes').value.trim();
   if (!monto||monto<=0) return mostrarStatus('Ingresá un monto válido.','error');
   if (!concepto) return mostrarStatus('Seleccioná el concepto.','error');
   if (!anioMes) return mostrarStatus('Completá el período.','error');
   const periodoValido = /^(\d{4}\.\d{2}|TEST\.\d{2})$/i.test(anioMes);
   if (!periodoValido) return mostrarStatus('Período inválido. Usá AAAA.MM o TEST.XX','error');
+  anioMes = anioMes.toUpperCase();
+  document.getElementById('anio-mes').value = anioMes;
   if (!appConfig.sheetId) return mostrarStatus('Configurá la conexión primero.','error');
 
   const btn = document.getElementById('btn-enviar');
@@ -1746,7 +1750,7 @@ async function enviarGasto() {
     const fila = [
       anioMes,
       document.getElementById('fecha-mov').value,
-      montoFinal, montoFinal,
+      '', montoFinal,   // C vacio (presupuesto) · D real
       concepto,
       obsVal,
       document.getElementById('h-orden').value,
@@ -1756,7 +1760,7 @@ async function enviarGasto() {
       document.getElementById('responsable').value,
       '',
       document.getElementById('medio-pago').value,
-      document.getElementById('periodo-tdc').value,
+      (document.getElementById('periodo-tdc').value||'').trim().toUpperCase(),
       estadoActual,
       '',
       provVal,
@@ -2014,7 +2018,7 @@ async function enviarTodosRecurrentes() {
     const anexoExpr = savedAnexosEnv[nombre]||'';
     const obsRec = normalizar((document.getElementById('rec-obs-'+i) || {}).value || savedObsEnv[nombre] || '');
     filas.push([
-      periodo, fecha, monto, monto,
+      periodo, fecha, monto, '',   // solo presupuesto
       nombre, obsRec,
       d.orden||'PRESUPUESTO', d.cat||'', d.tipo||'EGRESOS',
       d.clasif||'', d.resp||'', '', d.mp||'', '', 'ACTIVO',
@@ -2104,7 +2108,7 @@ async function anularRegistro(i) {
     const contraFila = [
       r.anioMes,
       new Date().toISOString().split('T')[0],
-      -r.monto, -r.monto,
+      '', -r.monto,   // anula el real
       r.concepto,
       `ANULACIÓN — ${comentario}`,
       r.orden||'', r.cat||'', r.tipoReg||'',
@@ -2249,7 +2253,7 @@ function verPendientes() {
       const cuando = new Date(item.ts).toLocaleString('es-AR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
       return '<div style="padding:4px 0;border-bottom:1px solid var(--border);">'
         + '<span style="color:var(--text)">' + f[4] + '</span> · $'
-        + Math.abs(f[3]).toLocaleString('es-AR')
+        + Math.abs(montoDeFila(f)).toLocaleString('es-AR')
         + ' · ' + f[0] + ' <span style="color:var(--text3)">(' + cuando + ')</span></div>';
     }).join('');
   }
@@ -2563,8 +2567,16 @@ function guardarCola(cola) {
 }
 
 // Huella = periodo + concepto + monto. Sirve para detectar cargas repetidas.
+function montoDeFila(fila) {
+  // Individual/Lote/Simple cargan en D (real); Presupuesto carga en C
+  const real = parseFloat(fila[3]);
+  if (!isNaN(real) && real !== 0) return real;
+  const presu = parseFloat(fila[2]);
+  return isNaN(presu) ? 0 : presu;
+}
+
 function huellaDe(fila) {
-  return [fila[0], fila[4], fila[3]].join('|').toUpperCase();
+  return [fila[0], fila[4], montoDeFila(fila)].join('|').toUpperCase();
 }
 
 function leerHuellas() {
@@ -2697,7 +2709,7 @@ function actualizarBanner() {
 function avisarDuplicado(fila, fechaPrevia) {
   const cuando = fechaPrevia.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
   return confirm(
-    'Ojo: ya cargaste "' + fila[4] + '" por $' + Math.abs(fila[3]).toLocaleString('es-AR') +
+    'Ojo: ya cargaste "' + fila[4] + '" por $' + Math.abs(montoDeFila(fila)).toLocaleString('es-AR') +
     ' en el período ' + fila[0] + '.\n\nSe registró el ' + cuando + '.\n\n' +
     '¿Lo cargás igual? (Aceptar registra un movimiento nuevo, no pisa el anterior)'
   );
