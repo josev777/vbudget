@@ -343,6 +343,16 @@ textarea.json-input{background:var(--bg);border:1px solid var(--border);border-r
         <input type="date" id="simple-fecha" style="font-size:15px;padding:13px;">
       </div>
 
+      <!-- PERIODO TDC (aparece solo si el concepto se paga con tarjeta) -->
+      <div class="field" id="simple-campo-tdc" style="display:none">
+        <label>¿En qué resumen de tarjeta cae?</label>
+        <input type="text" id="simple-tdc" placeholder="2026.05" maxlength="7"
+          inputmode="decimal" autocomplete="off" style="font-size:15px;padding:13px;">
+        <div style="font-size:10px;color:var(--text3);margin-top:5px;letter-spacing:0.5px;">
+          Formato año punto mes — ejemplo: 2026.05
+        </div>
+      </div>
+
       <!-- SUBMIT BIG -->
       <button id="simple-submit" onclick="enviarSimple()"
         style="background:var(--accent);color:#0f0f0f;border:none;border-radius:12px;padding:18px;font-family:var(--font-mono);font-size:13px;font-weight:500;letter-spacing:2px;text-transform:uppercase;cursor:pointer;width:100%;margin-top:4px;transition:all 0.2s;">
@@ -383,7 +393,7 @@ textarea.json-input{background:var(--bg);border:1px solid var(--border);border-r
 
 <header>
   <div class="logo">V<span>Budget</span></div>
-  <div class="subtitle">Sistema de control · v4.3</div>
+  <div class="subtitle">Sistema de control · v4.4</div>
 </header>
 
 <div class="tabs">
@@ -735,7 +745,7 @@ textarea.json-input{background:var(--bg);border:1px solid var(--border);border-r
   <div class="card">
     <div class="card-title">Acerca de</div>
     <div style="font-size:11px;color:var(--text2);line-height:1.8;">
-      VBudget v4.3 · PWA<br>
+      VBudget v4.4 · PWA<br>
       Conceptos y listas se leen del Sheet — la app no guarda datos propios.<br>
       Registros → Google Sheets → Excel vía Power Query.
     </div>
@@ -815,6 +825,16 @@ function acSeleccionarSimple(val) {
   const dd = document.getElementById('ac-dropdown-simple');
   dd.classList.remove('open');
   dd.innerHTML = '';
+
+  // Mostrar el campo de resumen si el concepto se paga con tarjeta
+  const d = MAP[val] || {};
+  const campoTdc = document.getElementById('simple-campo-tdc');
+  if (campoTdc) {
+    const esTarjeta = d.mp && TDC_LIST.includes(d.mp);
+    campoTdc.style.display = esTarjeta ? 'flex' : 'none';
+    if (!esTarjeta) document.getElementById('simple-tdc').value = '';
+  }
+
   document.getElementById('simple-monto').focus();
 }
 
@@ -847,6 +867,23 @@ async function enviarSimple() {
     return;
   }
 
+  // Si se paga con tarjeta, el resumen es obligatorio
+  const dConcepto = MAP[concepto] || {};
+  let tdcSimple = '';
+  if (dConcepto.mp && TDC_LIST.includes(dConcepto.mp)) {
+    tdcSimple = (document.getElementById('simple-tdc').value || '').trim().toUpperCase();
+    if (!tdcSimple) {
+      resaltarCampo('simple-tdc');
+      mostrarStatusSimple('Falta indicar en qué resumen de tarjeta cae este gasto.', 'error');
+      return;
+    }
+    if (!/^\d{4}\.\d{2}$/.test(tdcSimple)) {
+      resaltarCampo('simple-tdc');
+      mostrarStatusSimple('El resumen debe escribirse como año punto mes. Ejemplo: 2026.05', 'error');
+      return;
+    }
+  }
+
   btn.disabled = true;
   btn.textContent = '...';
   mostrarStatusSimple('', '');
@@ -862,7 +899,7 @@ async function enviarSimple() {
       anioMes, fecha, '', monto,   // solo real
       concepto, '', d.orden||'PRESUPUESTO',
       d.cat||'', d.tipo||'EGRESOS', d.clasif||'',
-      usuarioActual(), '', d.mp||'', '', 'ACTIVO',
+      usuarioActual(), '', d.mp||'', tdcSimple, 'ACTIVO',
       '', '', '', '', '', '', '',
       usuarioActual()
     ];
@@ -908,6 +945,8 @@ function nuevoGastoSimple() {
   document.getElementById('simple-search').value = '';
   document.getElementById('simple-concepto').value = '';
   document.getElementById('simple-monto').value = '';
+  const stdc = document.getElementById('simple-tdc'); if (stdc) stdc.value = '';
+  const sctdc = document.getElementById('simple-campo-tdc'); if (sctdc) sctdc.style.display = 'none';
   document.getElementById('simple-submit').disabled = false;
   document.getElementById('simple-submit').textContent = '✓  Registrar';
   document.getElementById('simple-search').focus();
@@ -1049,6 +1088,7 @@ async function enviarLote() {
 
   const conceptos = window._loteConceptos || [];
   const filas = [];
+  let errorTDC = null;
 
   conceptos.forEach(([nombre, d], i) => {
     const chk = document.getElementById('lote-chk-'+i);
@@ -1065,6 +1105,19 @@ async function enviarLote() {
     if (!monto||monto<=0) return;
     const mp = document.getElementById('lote-mp-'+i)?.value||d.mp||'';
     const tdc = ((document.getElementById('lote-tdc-'+i)||{}).value||'').trim().toUpperCase();
+    // Si es tarjeta, exigir periodo TDC
+    if (TDC_LIST.includes(mp)) {
+      if (!tdc) {
+        resaltarCampo('lote-tdc-'+i);
+        errorTDC = 'Falta el período TDC en "' + nombre + '". Es obligatorio cuando pagás con tarjeta.';
+        return;
+      }
+      if (!/^\d{4}\.\d{2}$/.test(tdc)) {
+        resaltarCampo('lote-tdc-'+i);
+        errorTDC = 'El período TDC de "' + nombre + '" debe ser AAAA.MM (ejemplo: 2026.05).';
+        return;
+      }
+    }
     const prov = normalizar((document.getElementById('lote-prov-'+i) || {}).value || '');
     const resp = document.getElementById('lote-resp-'+i)?.value||d.resp||'';
     const estadoLote = document.getElementById('lote-estado-'+i)?.value||'ACTIVO';
@@ -1081,6 +1134,7 @@ async function enviarLote() {
     ]);
   });
 
+  if (errorTDC) return mostrarStatusLote(errorTDC, 'error');
   if (!filas.length) return mostrarStatusLote('Seleccioná al menos un concepto con monto.','error');
   mostrarStatusLote(`Enviando ${filas.length} registros...`,'loading');
 
@@ -1184,6 +1238,21 @@ function normalizar(text) {
     .trim();
 }
 
+
+
+// Resalta un campo en rojo por unos segundos
+function resaltarCampo(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const contenedor = el.closest('.field');
+  if (contenedor) contenedor.style.display = 'flex';
+  el.style.borderColor = 'var(--danger)';
+  el.style.animation = 'shake 0.3s ease';
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  setTimeout(() => { el.style.animation = ''; }, 600);
+  setTimeout(() => { el.style.borderColor = ''; }, 3000);
+  try { el.focus(); } catch(e) {}
+}
 
 // ══════════════════════════════════════════════
 // BARRA DE OPERADORES (los teclados moviles no traen * ni /)
@@ -1801,6 +1870,22 @@ async function enviarGasto() {
   if (!periodoValido) return mostrarStatus('Período inválido. Usá AAAA.MM o TEST.XX','error');
   anioMes = anioMes.toUpperCase();
   document.getElementById('anio-mes').value = anioMes;
+
+  // Si el pago es con tarjeta, el periodo TDC es obligatorio
+  const medioSel = document.getElementById('medio-pago').value;
+  if (TDC_LIST.includes(medioSel)) {
+    const tdcEl = document.getElementById('periodo-tdc');
+    const tdcVal = (tdcEl.value || '').trim().toUpperCase();
+    if (!tdcVal) {
+      resaltarCampo('periodo-tdc');
+      return mostrarStatus('Olvidaste cargar el período TDC. Es obligatorio cuando pagás con tarjeta.', 'error');
+    }
+    if (!/^\d{4}\.\d{2}$/.test(tdcVal)) {
+      resaltarCampo('periodo-tdc');
+      return mostrarStatus('El período TDC debe tener formato AAAA.MM (ejemplo: 2026.05).', 'error');
+    }
+    tdcEl.value = tdcVal;
+  }
   if (!appConfig.sheetId) return mostrarStatus('Configurá la conexión primero.','error');
 
   const btn = document.getElementById('btn-enviar');
@@ -2582,7 +2667,7 @@ function mostrarAvisoTablas(msg, esError) {
 // ══════════════════════════════════════════════
 // SERVICE WORKER / PWA / CONTROL DE VERSION
 // ══════════════════════════════════════════════
-const APP_VERSION = '4.3';
+const APP_VERSION = '4.4';
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
