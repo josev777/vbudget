@@ -393,7 +393,7 @@ textarea.json-input{background:var(--bg);border:1px solid var(--border);border-r
 
 <header>
   <div class="logo">V<span>Budget</span></div>
-  <div class="subtitle">Sistema de control · v4.4</div>
+  <div class="subtitle">Sistema de control · v4.5</div>
 </header>
 
 <div class="tabs">
@@ -713,6 +713,17 @@ textarea.json-input{background:var(--bg);border:1px solid var(--border);border-r
   </div>
 
   <div class="card">
+    <div class="card-title">Versión de la app</div>
+    <div class="conn-status">
+      <div class="conn-dot ok"></div>
+      <span id="version-actual">VBudget</span>
+    </div>
+    <button class="btn-secondary" onclick="chequearVersion(true)">Buscar actualizaciones</button>
+    <button class="btn-secondary" onclick="forzarRecarga()">Forzar recarga completa</button>
+    <div id="version-info" style="display:none;font-size:11px;line-height:1.6;padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;"></div>
+  </div>
+
+  <div class="card">
     <div class="card-title">Movimientos pendientes</div>
     <div style="font-size:11px;color:var(--text2);line-height:1.6;">
       Si cargás sin señal, los movimientos quedan guardados en el dispositivo y se envían solos al reconectar.
@@ -745,7 +756,7 @@ textarea.json-input{background:var(--bg);border:1px solid var(--border);border-r
   <div class="card">
     <div class="card-title">Acerca de</div>
     <div style="font-size:11px;color:var(--text2);line-height:1.8;">
-      VBudget v4.4 · PWA<br>
+      VBudget v4.5 · PWA<br>
       Conceptos y listas se leen del Sheet — la app no guarda datos propios.<br>
       Registros → Google Sheets → Excel vía Power Query.
     </div>
@@ -1726,6 +1737,8 @@ function initApp() {
   } catch(e){}
 
   aplicarNombresSesion();
+  const vEl = document.getElementById('version-actual');
+  if (vEl) vEl.textContent = 'VBudget ' + APP_VERSION + ' instalada';
   renderRecurrentes();
   cargarTablas();
   actualizarBanner();
@@ -2667,7 +2680,7 @@ function mostrarAvisoTablas(msg, esError) {
 // ══════════════════════════════════════════════
 // SERVICE WORKER / PWA / CONTROL DE VERSION
 // ══════════════════════════════════════════════
-const APP_VERSION = '4.4';
+const APP_VERSION = '4.5';
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
@@ -2696,15 +2709,46 @@ if ('serviceWorker' in navigator) {
 }
 
 // Chequeo directo contra el servidor, sin depender del service worker
-async function chequearVersion() {
+// manual = true muestra el resultado aunque no haya version nueva
+async function chequearVersion(manual) {
+  const info = document.getElementById('version-info');
+  const decir = (txt, err) => {
+    if (!info) return;
+    info.style.display = 'block';
+    info.textContent = txt;
+    info.style.color = err ? 'var(--danger)' : 'var(--text2)';
+  };
+
+  if (manual) decir('Consultando...');
+
   try {
-    const r = await fetch('version.json?t=' + Date.now(), { cache: 'no-store' });
-    if (!r.ok) return;
-    const data = await r.json();
-    if (data.version && data.version !== APP_VERSION) {
-      avisarVersionNueva(data.version);
+    const url = new URL('version.json', window.location.href).href + '?t=' + Date.now();
+    const r = await fetch(url, { cache: 'no-store' });
+
+    if (!r.ok) {
+      decir('No se encontró version.json en el servidor (error ' + r.status + ').', true);
+      return;
     }
-  } catch(e) {}
+
+    const texto = await r.text();
+    let data;
+    try { data = JSON.parse(texto); }
+    catch(e) { decir('version.json no tiene formato válido.', true); return; }
+
+    if (!data.version) {
+      decir('version.json no contiene el campo "version".', true);
+      return;
+    }
+
+    if (String(data.version) !== String(APP_VERSION)) {
+      avisarVersionNueva(data.version);
+      decir('Servidor: ' + data.version + ' · Instalada: ' + APP_VERSION);
+    } else if (manual) {
+      decir('Estás al día. Versión ' + APP_VERSION + '.');
+    }
+  } catch(e) {
+    decir('No se pudo consultar: ' + (e.message || 'error de red'), true);
+  }
 }
 
 function avisarVersionNueva(nueva) {
@@ -2713,6 +2757,22 @@ function avisarVersionNueva(nueva) {
     nueva ? 'Versión ' + nueva + ' disponible (tenés la ' + APP_VERSION + ')'
           : 'Hay una versión nueva de VBudget',
     { texto: 'Actualizar', accion: 'aplicarActualizacion()' });
+}
+
+async function forzarRecarga() {
+  const info = document.getElementById('version-info');
+  if (info) { info.style.display = 'block'; info.textContent = 'Limpiando y recargando...'; info.style.color = 'var(--accent)'; }
+  try {
+    if ('caches' in window) {
+      const claves = await caches.keys();
+      await Promise.all(claves.map(k => caches.delete(k)));
+    }
+    if ('serviceWorker' in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map(r => r.unregister()));
+    }
+  } catch(e) {}
+  window.location.href = window.location.pathname + '?v=' + Date.now();
 }
 
 async function aplicarActualizacion() {
