@@ -1,5 +1,5 @@
 // VBudget service worker
-const VERSION = 'vbudget-v4.5';
+const VERSION = 'vbudget-v4.6';
 const ARCHIVOS = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
@@ -26,11 +26,27 @@ self.addEventListener('fetch', e => {
   if (url.includes('version.json')) return;
   if (e.request.method !== 'GET') return;
 
-  // Para el HTML: siempre pedir al servidor sin usar el cache del navegador
   const esHTML = e.request.mode === 'navigate' || url.endsWith('.html') || url.endsWith('/');
 
+  if (esHTML) {
+    // El HTML nunca sale del cache si hay red: se pide siempre fresco,
+    // saltando incluso el cache HTTP del navegador.
+    e.respondWith(
+      fetch(e.request.url, { cache: 'no-store' })
+        .then(resp => {
+          if (resp && resp.status === 200) {
+            const copia = resp.clone();
+            caches.open(VERSION).then(c => c.put('./index.html', copia));
+          }
+          return resp;
+        })
+        .catch(() => caches.match('./index.html'))
+    );
+    return;
+  }
+
   e.respondWith(
-    fetch(e.request, esHTML ? { cache: 'reload' } : {})
+    fetch(e.request)
       .then(resp => {
         if (resp && resp.status === 200 && resp.type === 'basic') {
           const copia = resp.clone();
@@ -38,7 +54,7 @@ self.addEventListener('fetch', e => {
         }
         return resp;
       })
-      .catch(() => caches.match(e.request).then(r => r || caches.match('./index.html')))
+      .catch(() => caches.match(e.request))
   );
 });
 

@@ -393,7 +393,7 @@ textarea.json-input{background:var(--bg);border:1px solid var(--border);border-r
 
 <header>
   <div class="logo">V<span>Budget</span></div>
-  <div class="subtitle">Sistema de control · v4.5</div>
+  <div class="subtitle">Sistema de control · v4.6</div>
 </header>
 
 <div class="tabs">
@@ -756,7 +756,7 @@ textarea.json-input{background:var(--bg);border:1px solid var(--border);border-r
   <div class="card">
     <div class="card-title">Acerca de</div>
     <div style="font-size:11px;color:var(--text2);line-height:1.8;">
-      VBudget v4.5 · PWA<br>
+      VBudget v4.6 · PWA<br>
       Conceptos y listas se leen del Sheet — la app no guarda datos propios.<br>
       Registros → Google Sheets → Excel vía Power Query.
     </div>
@@ -791,7 +791,7 @@ function initSimple() {
   actualizarBanner();
   setColaStatus();
   sincronizarCola(false);
-  chequearVersion();
+  arrancarChequeoVersion();
 }
 
 // Autocomplete simple (same data, simpler UX)
@@ -1744,7 +1744,7 @@ function initApp() {
   actualizarBanner();
   setColaStatus();
   sincronizarCola(false);
-  chequearVersion();
+  arrancarChequeoVersion();
 }
 
 // Aplica los nombres de usuario configurables a la interfaz
@@ -2680,7 +2680,7 @@ function mostrarAvisoTablas(msg, esError) {
 // ══════════════════════════════════════════════
 // SERVICE WORKER / PWA / CONTROL DE VERSION
 // ══════════════════════════════════════════════
-const APP_VERSION = '4.5';
+const APP_VERSION = '4.6';
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
@@ -2706,6 +2706,24 @@ if ('serviceWorker' in navigator) {
       window.location.reload();
     });
   });
+}
+
+
+// El cache de GitHub Pages puede tardar unos minutos en soltar el archivo nuevo.
+// Por eso no alcanza con chequear una sola vez al abrir.
+let chequeosHechos = 0;
+function arrancarChequeoVersion() {
+  chequearVersion();
+  setTimeout(() => chequearVersion(), 8000);
+  setTimeout(() => chequearVersion(), 45000);
+
+  // Al volver a la app despues de dejarla en segundo plano
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && !bannerFijo) chequearVersion();
+  });
+
+  // Cada 10 minutos mientras este abierta
+  setInterval(() => { if (!bannerFijo) chequearVersion(); }, 600000);
 }
 
 // Chequeo directo contra el servidor, sin depender del service worker
