@@ -47,6 +47,40 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-mono);min-hei
 }
 body.con-banner header, body.con-banner #app-simple > div:first-child { padding-top: 46px; }
 
+
+/* BARRA DE OPERADORES */
+.ops-bar {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 5px;
+  margin-top: 8px;
+}
+.ops-bar button {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: var(--text2);
+  font-family: var(--font-mono);
+  font-size: 16px;
+  padding: 9px 0;
+  cursor: pointer;
+  transition: all 0.15s;
+  line-height: 1;
+}
+.ops-bar button:active {
+  background: var(--accent);
+  color: #0f0f0f;
+  transform: scale(0.94);
+}
+.ops-bar button.op-clear {
+  color: var(--danger);
+  font-size: 13px;
+}
+.ops-bar button.op-clear:active {
+  background: var(--danger);
+  color: #fff;
+}
+
 /* AUTOCOMPLETE */
 .autocomplete-wrap { position: relative; }
 .ac-dropdown {
@@ -349,7 +383,7 @@ textarea.json-input{background:var(--bg);border:1px solid var(--border);border-r
 
 <header>
   <div class="logo">V<span>Budget</span></div>
-  <div class="subtitle">Sistema de control · v4.2</div>
+  <div class="subtitle">Sistema de control · v4.3</div>
 </header>
 
 <div class="tabs">
@@ -379,10 +413,21 @@ textarea.json-input{background:var(--bg);border:1px solid var(--border);border-r
       <label>Monto (ARS)</label>
       <div class="monto-wrapper">
         <span class="monto-prefix">$</span>
-        <input class="monto-input" type="text" id="monto-expr" placeholder="0 ó =(1500*2)*5" oninput="evaluarMonto('monto-expr','monto-preview')">
+        <input class="monto-input" type="text" id="monto-expr" placeholder="0"
+          inputmode="decimal" autocomplete="off"
+          oninput="evaluarMonto('monto-expr','monto-preview')">
         <input type="hidden" id="monto">
       </div>
       <div id="monto-preview" class="formula-preview"></div>
+      <div class="ops-bar">
+        <button type="button" onclick="insertarOp('monto-expr','+')">+</button>
+        <button type="button" onclick="insertarOp('monto-expr','-')">−</button>
+        <button type="button" onclick="insertarOp('monto-expr','*')">×</button>
+        <button type="button" onclick="insertarOp('monto-expr','/')">÷</button>
+        <button type="button" onclick="insertarOp('monto-expr','(')">(</button>
+        <button type="button" onclick="insertarOp('monto-expr',')')">)</button>
+        <button type="button" onclick="borrarCampo('monto-expr','monto-preview')" class="op-clear">C</button>
+      </div>
     </div>
 
     <!-- CANTIDAD × PRECIO (agrupador) -->
@@ -470,13 +515,13 @@ textarea.json-input{background:var(--bg);border:1px solid var(--border);border-r
 
     <div class="field" id="campo-tdc" style="display:none">
       <label>Período TDC (corte en que cae)</label>
-      <input type="text" id="periodo-tdc" placeholder="2026.05 ó TEST.01" maxlength="7">
+      <input type="text" id="periodo-tdc" placeholder="2026.05" maxlength="7" inputmode="decimal" autocomplete="off">
     </div>
 
     <div class="row">
       <div class="field">
         <label>Período (AAAA.MM)</label>
-        <input type="text" id="anio-mes" placeholder="2026.05" maxlength="7">
+        <input type="text" id="anio-mes" placeholder="2026.05" maxlength="7" inputmode="decimal" autocomplete="off">
       </div>
       <div class="field">
         <label>Fecha del gasto</label>
@@ -540,7 +585,7 @@ textarea.json-input{background:var(--bg);border:1px solid var(--border);border-r
     <div class="row">
       <div class="field">
         <label>Período (AAAA.MM o TEST.XX)</label>
-        <input type="text" id="lote-periodo" placeholder="2026.05" maxlength="7">
+        <input type="text" id="lote-periodo" placeholder="2026.05" maxlength="7" inputmode="decimal" autocomplete="off">
       </div>
       <div class="field">
         <label>Fecha</label>
@@ -690,7 +735,7 @@ textarea.json-input{background:var(--bg);border:1px solid var(--border);border-r
   <div class="card">
     <div class="card-title">Acerca de</div>
     <div style="font-size:11px;color:var(--text2);line-height:1.8;">
-      VBudget v4.2 · PWA<br>
+      VBudget v4.3 · PWA<br>
       Conceptos y listas se leen del Sheet — la app no guarda datos propios.<br>
       Registros → Google Sheets → Excel vía Power Query.
     </div>
@@ -725,6 +770,7 @@ function initSimple() {
   actualizarBanner();
   setColaStatus();
   sincronizarCola(false);
+  chequearVersion();
 }
 
 // Autocomplete simple (same data, simpler UX)
@@ -928,7 +974,7 @@ function filtrarLote() {
       </div>
       <div class="rec-monto-row">
         <label>$ Real</label>
-        <input type="text" id="lote-monto-${i}" placeholder="0 ó fórmula"
+        <input type="text" id="lote-monto-${i}" placeholder="0" inputmode="decimal" autocomplete="off"
           oninput="evaluarMonto('lote-monto-${i}','lote-prev-${i}'); checkDesvioLote(${i},'${nombre.replace(/'/g,"\\'")}'  )">
       </div>
       <div id="lote-prev-${i}" class="formula-preview"></div>
@@ -1136,6 +1182,31 @@ function normalizar(text) {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .trim();
+}
+
+
+// ══════════════════════════════════════════════
+// BARRA DE OPERADORES (los teclados moviles no traen * ni /)
+// ══════════════════════════════════════════════
+function insertarOp(campoId, simbolo) {
+  const el = document.getElementById(campoId);
+  if (!el) return;
+  const ini = el.selectionStart ?? el.value.length;
+  const fin = el.selectionEnd ?? el.value.length;
+  el.value = el.value.slice(0, ini) + simbolo + el.value.slice(fin);
+  const pos = ini + simbolo.length;
+  el.focus();
+  try { el.setSelectionRange(pos, pos); } catch(e) {}
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+function borrarCampo(campoId, previewId) {
+  const el = document.getElementById(campoId);
+  if (el) { el.value = ''; el.focus(); el.dispatchEvent(new Event('input', { bubbles: true })); }
+  const pv = document.getElementById(previewId);
+  if (pv) pv.textContent = '';
+  const oculto = document.getElementById('monto');
+  if (campoId === 'monto-expr' && oculto) oculto.value = '';
 }
 
 // ══════════════════════════════════════════════
@@ -1591,6 +1662,7 @@ function initApp() {
   actualizarBanner();
   setColaStatus();
   sincronizarCola(false);
+  chequearVersion();
 }
 
 // Aplica los nombres de usuario configurables a la interfaz
@@ -1854,7 +1926,7 @@ function renderRecurrentes() {
       </div>
       <div class="rec-monto-row">
         <label>$ Monto</label>
-        <input type="text" id="rec-monto-${i}" value="${montoGuardado}" placeholder="0"
+        <input type="text" id="rec-monto-${i}" value="${montoGuardado}" placeholder="0" inputmode="decimal" autocomplete="off"
           oninput="guardarMontoRec('${nombre}', this.value)"
           style="${anexoGuardado ? 'background:var(--bg);color:var(--text3);' : ''}">
         <div id="rec-preview-${i}" class="formula-preview"></div>
@@ -1862,7 +1934,7 @@ function renderRecurrentes() {
 
       <div class="field" style="margin-top:6px">
         <label style="font-size:9px;color:var(--accent2);">Anexo Presup <span style="color:var(--text3);">— escribí la fórmula y el monto se calcula solo</span></label>
-        <input type="text" id="rec-anexo-${i}" value="${anexoGuardado}" placeholder="=(1500*2)*5 — opcional"
+        <input type="text" id="rec-anexo-${i}" value="${anexoGuardado}" placeholder="=(1500*2)*5" inputmode="decimal" autocomplete="off"
           oninput="onAnexoInput(${i},'${nombre}')" style="font-size:12px;color:var(--accent2);">
         <div id="rec-anexo-preview-${i}" class="formula-preview"></div>
       </div>
@@ -2508,26 +2580,27 @@ function mostrarAvisoTablas(msg, esError) {
 
 
 // ══════════════════════════════════════════════
-// SERVICE WORKER / PWA
+// SERVICE WORKER / PWA / CONTROL DE VERSION
 // ══════════════════════════════════════════════
+const APP_VERSION = '4.3';
+
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('sw.js').then(reg => {
-      // Detectar version nueva disponible
+      // Forzar chequeo de version nueva al abrir
+      reg.update().catch(() => {});
+
       reg.addEventListener('updatefound', () => {
         const nuevo = reg.installing;
         if (!nuevo) return;
         nuevo.addEventListener('statechange', () => {
           if (nuevo.state === 'installed' && navigator.serviceWorker.controller) {
-            bannerFijo = true;
-            mostrarBanner('sync', 'Hay una versión nueva de VBudget',
-              { texto: 'Actualizar', accion: 'aplicarActualizacion()' });
+            avisarVersionNueva();
           }
         });
       });
     }).catch(() => {});
 
-    // Cuando el SW nuevo toma control, recargar una sola vez
     let recargando = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       if (recargando) return;
@@ -2537,16 +2610,42 @@ if ('serviceWorker' in navigator) {
   });
 }
 
-function aplicarActualizacion() {
+// Chequeo directo contra el servidor, sin depender del service worker
+async function chequearVersion() {
+  try {
+    const r = await fetch('version.json?t=' + Date.now(), { cache: 'no-store' });
+    if (!r.ok) return;
+    const data = await r.json();
+    if (data.version && data.version !== APP_VERSION) {
+      avisarVersionNueva(data.version);
+    }
+  } catch(e) {}
+}
+
+function avisarVersionNueva(nueva) {
+  bannerFijo = true;
+  mostrarBanner('sync',
+    nueva ? 'Versión ' + nueva + ' disponible (tenés la ' + APP_VERSION + ')'
+          : 'Hay una versión nueva de VBudget',
+    { texto: 'Actualizar', accion: 'aplicarActualizacion()' });
+}
+
+async function aplicarActualizacion() {
   bannerFijo = null;
-  if (navigator.serviceWorker.controller) {
-    navigator.serviceWorker.getRegistration().then(reg => {
-      if (reg && reg.waiting) reg.waiting.postMessage('actualizar');
-      else window.location.reload();
-    });
-  } else {
-    window.location.reload();
-  }
+  mostrarBanner('sync', 'Actualizando...');
+  try {
+    // Borrar todo el cache para bajar los archivos nuevos
+    if ('caches' in window) {
+      const claves = await caches.keys();
+      await Promise.all(claves.map(k => caches.delete(k)));
+    }
+    const reg = await navigator.serviceWorker.getRegistration();
+    if (reg) {
+      if (reg.waiting) { reg.waiting.postMessage('actualizar'); return; }
+      await reg.unregister();
+    }
+  } catch(e) {}
+  window.location.reload(true);
 }
 
 // ══════════════════════════════════════════════

@@ -1,5 +1,5 @@
 // VBudget service worker
-const VERSION = 'vbudget-v4.2';
+const VERSION = 'vbudget-v4.3';
 const ARCHIVOS = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
@@ -21,13 +21,16 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   const url = e.request.url;
 
-  // Nunca cachear llamadas a Google: siempre red
+  // Nunca cachear llamadas a Google ni el chequeo de version
   if (url.includes('googleapis.com') || url.includes('oauth2.google')) return;
+  if (url.includes('version.json')) return;
   if (e.request.method !== 'GET') return;
 
-  // Red primero, cache como respaldo
+  // Para el HTML: siempre pedir al servidor sin usar el cache del navegador
+  const esHTML = e.request.mode === 'navigate' || url.endsWith('.html') || url.endsWith('/');
+
   e.respondWith(
-    fetch(e.request)
+    fetch(e.request, esHTML ? { cache: 'reload' } : {})
       .then(resp => {
         if (resp && resp.status === 200 && resp.type === 'basic') {
           const copia = resp.clone();
